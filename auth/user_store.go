@@ -15,4 +15,5 @@ var (
 type UserStore interface {
 	CreateUser(ctx context.Context, name, email, passwordHash string) (User, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
+	ListUsers(ctx context.Context) ([]User, error)
 }

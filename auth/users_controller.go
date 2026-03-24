@@ -62,14 +62,19 @@ func (c *UsersController) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{
+	resp := map[string]any{
 		"message": "user registered successfully",
 		"user": map[string]string{
 			"id":    user.ID,
 			"name":  user.Name,
 			"email": user.Email,
 		},
-	})
+	}
+	if err := c.addTokenIfConfigured(resp, user.ID, user.Email); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to issue token"})
+		return
+	}
+	writeJSON(w, http.StatusCreated, resp)
 }
 
 func (c *UsersController) Login(w http.ResponseWriter, r *http.Request) {
@@ -115,16 +120,35 @@ func (c *UsersController) Login(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	if len(c.jwtSecret) > 0 {
-		token, err := GenerateUserJWT(user.ID, user.Email, c.jwtSecret, c.jwtTTL)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to issue token"})
-			return
-		}
-		resp["token"] = token
+	if err := c.addTokenIfConfigured(resp, user.ID, user.Email); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to issue token"})
+		return
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// ListUsers handles GET /users — returns registered users (id, name, email only; no secrets).
+func (c *UsersController) ListUsers(w http.ResponseWriter, r *http.Request) {
+	users, err := c.store.ListUsers(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list users"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"users": users})
+}
+
+// addTokenIfConfigured sets resp["token"] when a JWT secret is configured. Returns non-nil if signing fails.
+func (c *UsersController) addTokenIfConfigured(resp map[string]any, userID, email string) error {
+	if len(c.jwtSecret) == 0 {
+		return nil
+	}
+	token, err := GenerateUserJWT(userID, email, c.jwtSecret, c.jwtTTL)
+	if err != nil {
+		return err
+	}
+	resp["token"] = token
+	return nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

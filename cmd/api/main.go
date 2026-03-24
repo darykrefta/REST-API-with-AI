@@ -7,9 +7,12 @@ import (
 	"strings"
 	"time"
 
+	"path/filepath"
+
 	"rest.api/auth"
 	"rest.api/internal/db"
 	"rest.api/internal/storage"
+	"rest.api/internal/uploads"
 )
 
 func main() {
@@ -20,7 +23,7 @@ func main() {
 
 func NewServer() http.Handler {
 	// Store persistent state in a local SQLite file.
-	dbConn, err := db.OpenSQLite("file:app.db?_pragma=busy_timeout(5000)")
+	dbConn, err := db.OpenSQLite("file:app.db?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
 	if err != nil {
 		panic(err)
 	}
@@ -29,9 +32,18 @@ func NewServer() http.Handler {
 		panic(err)
 	}
 
+	imagesDir := "images"
+	if err := uploads.EnsureDir(imagesDir); err != nil {
+		panic(err)
+	}
+	imagesAbs, err := filepath.Abs(imagesDir)
+	if err != nil {
+		panic(err)
+	}
+
 	jwtSecret := []byte(strings.TrimSpace(os.Getenv("JWT_SECRET")))
 	if len(jwtSecret) == 0 {
-		log.Println("warning: JWT_SECRET not set; login will not return a token")
+		log.Println("warning: JWT_SECRET not set; signup/login will not return a token and event create/update/delete will return 503")
 	}
 
 	jwtTTL := 24 * time.Hour
@@ -54,6 +66,8 @@ func NewServer() http.Handler {
 	mux := http.NewServeMux()
 
 	RegisterAuthRoutes(mux, usersController)
+	RegisterEventRoutes(mux, dbConn, jwtSecret, imagesAbs)
+	RegisterStaticImageRoutes(mux, imagesDir)
 
 	return mux
 }

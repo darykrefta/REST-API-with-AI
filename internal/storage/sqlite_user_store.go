@@ -78,6 +78,29 @@ func (s *SQLiteUserStore) GetUserByEmail(ctx context.Context, email string) (aut
 	}, nil
 }
 
+func (s *SQLiteUserStore) ListUsers(ctx context.Context) ([]auth.User, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, email FROM users ORDER BY id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []auth.User
+	for rows.Next() {
+		var id int64
+		var name, email string
+		if err := rows.Scan(&id, &name, &email); err != nil {
+			return nil, err
+		}
+		out = append(out, auth.User{
+			ID:    itoa64(id),
+			Name:  name,
+			Email: email,
+		})
+	}
+	return out, rows.Err()
+}
+
 func itoa64(v int64) string {
 	// Small helper to avoid pulling in fmt for a single conversion.
 	if v == 0 {
